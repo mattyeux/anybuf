@@ -680,14 +680,14 @@ impl<'a> Bufany<'a> {
     /// use anybuf::{Anybuf, Bufany};
     ///
     /// let serialized = Anybuf::new()
-    ///     .append_repeated_int32(1, &[150, -150])
-    ///     .append_repeated_int32(2, &[150, 0, i32::MIN])
+    ///     .append_repeated_int32(1, &[150, -150], false)
+    ///     .append_repeated_int32(2, &[150, 0, i32::MIN], false)
     ///     .append_string(3, "foo")
     ///     .into_vec();
     /// let decoded = Bufany::deserialize(&serialized).unwrap();
     /// assert_eq!(decoded.repeated_int32(1), Some(vec![150, -150]));
     /// assert_eq!(decoded.repeated_int32(2), Some(vec![150, 0, i32::MIN]));
-    /// assert_eq!(decoded.repeated_int32(3), None);
+    /// assert_eq!(decoded.repeated_int32(3), Some(vec![102, 111, 111]));
     /// ```
     pub fn repeated_int32(&self, field_number: u32) -> Option<Vec<i32>> {
         let values = self.repeated_value_ref(field_number);
@@ -695,6 +695,15 @@ impl<'a> Bufany<'a> {
         for value in values {
             match value {
                 Value::Varint(data) => out.push((*data as i64).try_into().ok()?),
+                Value::VariableLength(data) => {
+                    let mut reader = SliceReader::new(data);
+                    loop {
+                        if reader.is_empty() { break; }
+                        if let Some(a) = read_unsigned_varint(&mut reader) {
+                            out.push((a).try_into().ok()?)
+                        }
+                    }
+                }
                 _ => return None, // Wrong type, we can't handle this
             }
         }
@@ -1332,15 +1341,15 @@ mod tests {
     #[test]
     fn repeated_int32_works() {
         let serialized = Anybuf::new()
-            .append_repeated_int32(1, &[150, -150])
-            .append_repeated_int32(2, &[150, 0, i32::MIN])
+            .append_repeated_int32(1, &[150, -150], false)
+            .append_repeated_int32(2, &[150, 0, i32::MIN], false)
             .append_string(3, "foo")
             .append_repeated_int64(4, &[150, 0, i64::MAX])
             .into_vec();
         let decoded = Bufany::deserialize(&serialized).unwrap();
         assert_eq!(decoded.repeated_int32(1), Some(vec![150, -150]));
         assert_eq!(decoded.repeated_int32(2), Some(vec![150, 0, i32::MIN]));
-        assert_eq!(decoded.repeated_int32(3), None);
+        assert_eq!(decoded.repeated_int32(3), Some(vec![102, 111, 111]));
         assert_eq!(decoded.repeated_int32(4), None); // Value exceeded 32 bit range
         assert_eq!(decoded.repeated_int32(85), Some(vec![])); // not serialized => default
     }

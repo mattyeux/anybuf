@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::varint::{to_zigzag32, to_zigzag64, unsigned_varint_encode};
+use crate::varint::{to_zigzag32, to_zigzag64, unsigned_varint_encode, count_varint_size};
 
 /// The protobuf wire types
 ///
@@ -341,10 +341,22 @@ impl Anybuf {
     ///     .append_repeated_sint32(4, &[-30, 0, 17])
     ///     .into_vec();
     /// ```
-    pub fn append_repeated_int32(mut self, field_number: u32, data: &[i32]) -> Self {
-        for value in data {
-            self.append_tag(field_number, WireType::Varint);
-            unsigned_varint_encode(*value as i64 as u64, &mut self.output);
+    pub fn append_repeated_int32(mut self, field_number: u32, data: &[i32], packed: bool) -> Self {
+        if !packed{
+            for value in data {
+                self.append_tag(field_number, WireType::Varint);
+                unsigned_varint_encode(*value as i64 as u64, &mut self.output);
+            }
+        } else {
+            self.append_tag(field_number, WireType::Len);
+            let output_value_size = data
+                .iter()
+                .map(|value| count_varint_size(*value as i64 as u64))
+                .sum::<u64>();
+            unsigned_varint_encode(output_value_size, &mut self.output);
+            for value in data {
+                unsigned_varint_encode(*value as i64 as u64, &mut self.output);
+            }
         }
         self
     }
@@ -925,7 +937,7 @@ mod tests {
         // echo "id: \"int32s\"; numbers_int32: [-2147483648, -1, 0, 1, 2, 37546, 2147483647]" | protoc --encode=Collection *.proto | xxd -p -c 9999
         let data = Anybuf::new()
             .append_string(1, "int32s")
-            .append_repeated_int32(6, &[i32::MIN, -1, 0, 1, 2, 37546, i32::MAX]);
+            .append_repeated_int32(6, &[i32::MIN, -1, 0, 1, 2, 37546, i32::MAX], false);
         assert_eq!(
             data.into_vec(),
             hex!("0a06696e743332733080808080f8ffffffff0130ffffffffffffffffff0130003001300230aaa50230ffffffff07")
@@ -934,7 +946,7 @@ mod tests {
         // echo "id: \"no int32s\"; numbers_int32: []" | protoc --encode=Collection *.proto | xxd -p -c 9999
         let data = Anybuf::new()
             .append_string(1, "no int32s")
-            .append_repeated_int32(6, &[]);
+            .append_repeated_int32(6, &[], false);
         assert_eq!(data.into_vec(), hex!("0a096e6f20696e74333273"));
     }
 
