@@ -1,3 +1,5 @@
+use core::u64;
+
 use alloc::vec::Vec;
 
 use crate::slice_reader::SliceReader;
@@ -65,6 +67,23 @@ pub fn read_unsigned_varint(data: &mut SliceReader) -> Option<u64> {
         }
     }
     None
+}
+
+/// Returns how many bytes the encoded integer `n` is going to be when converted
+/// to a varint.
+pub fn count_varint_size(n: u64) -> u64 {
+    return match n {
+        0..=127 => 1,
+        128..=16383 => 2,
+        16384..=2097151 => 3,
+        2097152..=268435455 => 4,
+        268435456..=34359738367 => 5,
+        34359738368..=4398046511103 => 6,
+        4398046511104..=562949953421311 => 7,
+        562949953421312..=72057594037927935 => 8,
+        72057594037927936..=9223372036854775807 => 9,
+        9223372036854775808..=u64::MAX => 10
+    };
 }
 
 #[cfg(test)]
