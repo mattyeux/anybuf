@@ -685,6 +685,50 @@ impl<'a> Bufany<'a> {
         Some(out)
     }
 
+
+    /// Gets repeated messages from the given field number.
+    /// Returns None in case a wrong wire type was found.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    // let serialized = Anybuf::new()
+    //     .append_uint64(1, 150)
+    //     .append_repeated_message(2, &[Anybuf::new().append_int64(6, 13)])
+    //     .append_repeated_message(3, &[
+    //         Anybuf::new().append_int32(1, 3),
+    //         Anybuf::new().append_int32(2, 4),
+    //         Anybuf::new().append_int32(3, 5),
+    //     ])
+    //     .append_repeated_message::<Anybuf>(5, &[])
+    //     .into_vec();
+    // let decoded = Bufany::deserialize(&serialized).unwrap();
+    // assert_eq!(decoded.repeated_bytes(1), None);
+    // assert_eq!(decoded.repeated_bytes(2).unwrap(), [b"\x30\x0d"]);
+    // assert_eq!(
+    //     decoded.repeated_bytes(3).unwrap(),
+    //     [b"\x08\x03", b"\x10\x04", b"\x18\x05"]
+    // );
+    // assert_eq!(decoded.repeated_bytes(5).unwrap(), Vec::<Vec<u8>>::new());
+    // assert_eq!(decoded.repeated_bytes(85).unwrap(), Vec::<Vec<u8>>::new());
+    /// ```
+    pub fn repeated_message(&'a self, field_number: u32) -> Option<Vec<Bufany<'a>>> {
+        let values = self.repeated_value_ref(field_number);
+        let mut out: Vec<Bufany<'a>> = Vec::with_capacity(values.len());
+        for value in values {
+            match value {
+                // Value::Varint(data) => out.push((*data as i64).try_into().ok()?),
+                Value::VariableLength(data) => {
+                    if let Some(a) = Bufany::deserialize(data).ok() {
+                        out.push((a).try_into().ok()?)
+                    }
+                }
+                _ => return None, // Wrong type, we can't handle this
+            }
+        }
+        Some(out)
+    }
+
     /// Gets repeated bytes from the given field number.
     /// Returns None in case a wrong wire type was found.
     ///
@@ -1311,5 +1355,33 @@ mod tests {
         assert!(matches!(err, RepeatedStringError::InvalidUtf8));
         // not serialized => default
         assert_eq!(decoded.repeated_string(85).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn repeated_message_works() {
+        let serialized = Anybuf::new()
+            .append_uint64(1, 150)
+            .append_repeated_message(2, &[Anybuf::new().append_int64(6, 13)])
+            .append_repeated_message(3, &[
+                Anybuf::new().append_int32(1, 3),
+                Anybuf::new().append_int32(2, 4),
+                Anybuf::new().append_int32(3, 5),
+            ])
+            .append_repeated_message::<Anybuf>(5, &[])
+            .into_vec();
+        let decoded = Bufany::deserialize(&serialized).unwrap();
+        // Wrong type
+        assert_eq!(decoded.repeated_bytes(1), None);
+        // One element
+        assert_eq!(decoded.repeated_bytes(2).unwrap(), [b"\x30\x0d"]);
+        // Multiple elements
+        assert_eq!(
+            decoded.repeated_bytes(3).unwrap(),
+            [b"\x08\x03", b"\x10\x04", b"\x18\x05"]
+        );
+        // No elements
+        assert_eq!(decoded.repeated_bytes(5).unwrap(), Vec::<Vec<u8>>::new());
+        // not serialized => default
+        assert_eq!(decoded.repeated_bytes(85).unwrap(), Vec::<Vec<u8>>::new());
     }
 }
