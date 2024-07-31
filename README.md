@@ -1,5 +1,7 @@
 # anybuf
 
+This fork was made because I needed packed encoding and repeated message encoding.
+
 [![anybuf on crates.io](https://img.shields.io/crates/v/anybuf.svg)](https://crates.io/crates/anybuf)
 [![Docs](https://docs.rs/anybuf/badge.svg)](https://docs.rs/anybuf)
 
@@ -27,11 +29,11 @@ The crate anybuf is split in two major components:
 - Variable length fields (string/bytes)
 - Nested messages: Just append an `Anybuf` instance
 - Repeated (bool/uint32/uint64/sint32/sint64/int32/int64/string/bytes/messages)
+- Packed encoding for repeated fields
 
 ## Not yet supported
 
 - Fixed length types
-- Packed encoding for repeated fields
 - Maps support (but you can use the equivalent [encoding via repeated messages](https://protobuf.dev/programming-guides/encoding/#maps))
 
 ## How to use it
