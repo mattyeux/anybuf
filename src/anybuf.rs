@@ -21,7 +21,7 @@ enum WireType {
 }
 
 /// A minmal protobuf encoder.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Anybuf {
     output: Vec<u8>,
 }
@@ -517,6 +517,35 @@ impl Anybuf {
     /// return an owned vector without cloning the data.
     pub fn into_vec(self) -> Vec<u8> {
         self.output
+    }
+
+    /// Takes the instance and returns the protobuf bytes.
+    /// The return type is defined by the caller and can be anything that implements `From<Vec<u8>>`.
+    /// Roughly speaking, `data.into_x()` is the same as calling `data.into_vec().into()`.
+    ///
+    /// ## Examples
+    ///
+    /// We create an Anybuf instance and then convert it into [Bytes], which just serves
+    /// as an example for a type that can be created from `Vec<u8>`.
+    ///
+    /// ```
+    /// # use anybuf::Anybuf;
+    /// use bytes::Bytes;
+    ///
+    /// // variable type known
+    /// let serialized: Bytes = Anybuf::new()
+    ///     .append_repeated_int64(4, &[-30, 0, 17])
+    ///     .into_x();
+    ///
+    /// // explicit type parameter
+    /// let serialized = Anybuf::new()
+    ///     .append_repeated_int64(4, &[-30, 0, 17])
+    ///     .into_x::<Bytes>();
+    /// ```
+    ///
+    /// [Bytes]: https://docs.rs/bytes/latest/bytes/struct.Bytes.html
+    pub fn into_x<T: From<Vec<u8>>>(self) -> T {
+        T::from(self.output)
     }
 
     fn append_tag(&mut self, field_number: u32, field_type: WireType) {
@@ -1026,5 +1055,25 @@ mod tests {
         // echo "messages: [{ number: 1}, { number: 2}, { number: 3}]" | protoc --encode=Collection *.proto | xxd -p -c 9999
         let data = Anybuf::new().append_repeated_message(11, &owned);
         assert_eq!(data.into_vec(), hex!("5a0208015a0208025a020803"));
+    }
+
+    #[test]
+    fn into_x_works() {
+        use bytes::Bytes;
+
+        let data = Anybuf::new()
+            .append_string(1, "hello, world")
+            .append_repeated_int64(2, &[-30, 0, 17]);
+        let vec = data.clone().into_vec();
+        let bytes: Bytes = data.into_x();
+        assert_eq!(bytes, vec);
+
+        let serialized = Anybuf::new()
+            .append_repeated_int64(4, &[-30, 0, 17])
+            .into_x::<Bytes>();
+        assert_eq!(
+            serialized,
+            b" \xe2\xff\xff\xff\xff\xff\xff\xff\xff\x01 \0 \x11" as &[u8]
+        );
     }
 }
